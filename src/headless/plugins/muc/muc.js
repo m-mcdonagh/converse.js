@@ -2093,15 +2093,36 @@ const ChatRoomMixin = {
         const message = this.getDuplicateMessage(attrs);
         if (message) {
             return this.updateMessage(message, attrs);
-        } else if (attrs.is_valid_receipt_request || attrs.is_marker || this.ignorableCSN(attrs)) {
+        } else if (attrs.is_valid_receipt_request || this.ignorableCSN(attrs)) {
             return;
         }
 
+        /**
+         * *Hook* which allows plugins to process an incoming message
+         * stanza *before* a {@link _converse.Message} is created.
+         *
+         * Return `true` in your listener if your processing has removed
+         * the need for creating a Message object (and respect a `true`
+         * result from other listeners).
+         *
+         * @event _converse#handleNewMessage
+         * @example
+         *  api.listen.on('handleNewMessage', (should_create_message) => {
+         *      if (isMarkerMessage()) {
+         *          createMarker();
+         *          return true;
+         *      }
+         *      return should_create_message;
+         *  });
+         */
+        const handled = await api.hook('handleNewMessage', { 'model': this, attrs }, false);
+
         if (
+            handled ||
             this.handleMetadataFastening(attrs) ||
-            (await this.handleRetraction(attrs)) ||
-            (await this.handleModeration(attrs)) ||
-            (await this.handleSubjectChange(attrs))
+            await this.handleRetraction(attrs) ||
+            await this.handleModeration(attrs) ||
+            await this.handleSubjectChange(attrs)
         ) {
             attrs.nick && this.removeNotification(attrs.nick, ['composing', 'paused']);
             return;
